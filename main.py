@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException #FastAPI
 from pydantic import BaseModel #Allow us to create classes for Therapist/Patients
-from enum import Enum
+
 
 
 #------------------------------------------------------------------#
@@ -125,6 +125,12 @@ async def get_all_patients():
         raise HTTPException(status_code=404, detail=f"Currently No Patients Exist")
     return patients_db
 
+@app.get("/therapists/")
+async def get_all_therapists():
+    if not therapists_db:
+        raise HTTPException(status_code=404, detail=f"Currently No Therapists Exist")
+    return therapists_db
+
 #------------------------------------------------------------------#
 #Step 5: Pull all of the Patients from a therapist
 @app.get("/therapists/{therapist_id}/patients")
@@ -198,4 +204,31 @@ async def remove_therapist_from_patient(therapist_id: int, patient_id: int):
 
     return patient_info
 
+#------------------------------------------------------------------#
+#Step 6: Updating information
+
+@app.patch("/therapists/{therapist_id}/name/{name}")
+async def change_therapist_name(therapist_id: int, name:str):
+    # checking first if they exist
+    if therapist_id not in therapists_db:
+        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
     
+    therapist_info = therapists_db[therapist_id]
+    print("Therapist_Info:", therapist_info)
+
+    therapist_info.name = name
+    print("test:", therapist_info.name)
+    return therapist_info
+
+@app.patch("/patients/{patient_id}/name/{name}")
+async def change_patient_name(patient_id: int, name:str):
+    # checking first if they exist
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail=f"Therapist with the id: {patient_id} doesn't exist")
+    
+    patient_info = therapists_db[patient_id]
+    print("Patient_Info:", patient_info)
+
+    patient_info.name = name
+    print("test:", patient_info.name)
+    return patient_info
