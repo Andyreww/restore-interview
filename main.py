@@ -64,32 +64,33 @@ async def create_patient(patient: Patients):
 #Step 3:
 # Assigning Therapist to Patients
 @app.post("/therapists/{therapist_id}/assign/{patient_id}")
-async def assign_patient(therapist_id: int, patient_id: int):
+async def assign_patient(therapist_id: int, patient_id: int): #the parameters to look up the therapist
 
     if therapist_id not in therapists_db: #Therapist does't exist
         raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
     
     if patient_id not in patients_db: #therapist does exist in our system
-            raise HTTPException(status_code=404, detail=f"Patient with the id: {patient_id} doesn't exist")
+        raise HTTPException(status_code=404, detail=f"Patient with the id: {patient_id} doesn't exist")
     
-    # getting the names from the temp db
-    patient = patients_db[patient_id]
-    therapist = therapists_db[therapist_id]
+    #getting the names from the temp db if the user does exist -> returns dict of their info based on their id
+    patient_temp = patients_db[patient_id]
+    therapist_temp = therapists_db[therapist_id]
+    print(f"Debug: Patient_temp:{patient_temp}")
+    print(f"Debug: Therapist_temp:{therapist_temp}")
+
 
     # checking first to see if their assigned to anyone
-    if therapist.patients is None: therapist.patient = []
-    if patient.therapists is None: therapist.therapist = []
-
-    # gravving the info from the specific patient/therapist
-    patient_info = {"id": patient_id, "name": patient.name}
-    therapist_info = {"id": therapist_id, "name": therapist.name}
-
+    # if they have no patients/therapists then we assign them an empty list
+    if therapist_temp.patients is None: therapist_temp.patients = []
+    if patient_temp.therapists is None: patient_temp.therapists = []
+    
+    # grabbing the info from the specific patient/therapist
+    patient_info = {"id": patient_id, "name": patient_temp.name}
+    therapist_info = {"id": therapist_id, "name": therapist_temp.name}
+    
     # adding it to the temp db
-    therapist.patients.append(patient_info)
-    patient.therapists.append(therapist_info)
+    therapist_temp.patients.append(patient_info)
+    patient_temp.therapists.append(therapist_info)
+    print("Checking Cross Check with Patient:", patient_temp.therapists)
 
-    # updating the actual db with the info
-    therapists_db[therapist_id] = therapist
-    patients_db[patient_id] = patient
-
-    return therapist
+    return therapist_temp
