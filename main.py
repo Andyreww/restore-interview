@@ -63,7 +63,7 @@ async def create_patient(patient: Patients):
 #------------------------------------------------------------------#
 #Step 3:
 # Assigning Therapist to Patients
-@app.post("/therapists/{therapist_id}/assign/{patient_id}")
+@app.post("/therapists/{therapist_id}/patients/{patient_id}")
 async def assign_patient(therapist_id: int, patient_id: int): #the parameters to look up the therapist
 
     if therapist_id not in therapists_db: #Therapist does't exist
@@ -94,3 +94,108 @@ async def assign_patient(therapist_id: int, patient_id: int): #the parameters to
     print("Checking Cross Check with Patient:", patient_temp.therapists)
 
     return therapist_temp
+
+#------------------------------------------------------------------#
+#Step 4:
+# Getting Info From the Patients
+
+@app.get("/patients/{patient_id}")
+async def get_patient_info(patient_id: int):
+    
+    #check if it even exists
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail=f"Patient with the id: {patient_id} doesn't exist")
+
+    return patients_db[patient_id]
+
+
+# Getting Info From the Therapists
+@app.get("/therapists/{therapist_id}")
+async def get_therapist_info(therapist_id: int):
+    
+    #check if it even exists
+    if therapist_id not in therapists_db:
+        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
+
+    return therapists_db[therapist_id]
+
+@app.get("/patients/")
+async def get_all_patients():
+    if not patients_db: #checking the size of the list
+        raise HTTPException(status_code=404, detail=f"Currently No Patients Exist")
+    return patients_db
+
+#------------------------------------------------------------------#
+#Step 5: Pull all of the Patients from a therapist
+@app.get("/therapists/{therapist_id}/patients")
+async def get_therapist_patients(therapist_id: int):
+
+    # making sure that the therapist exists
+    if therapist_id not in therapists_db:
+        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
+
+    return therapists_db[therapist_id].patients
+
+#------------------------------------------------------------------#
+# Recap of where were at right now
+# [x] We can create therapists
+# [x] We can create patients
+# [x] We can retireve information from the specific therapist/patient based on id
+# [x] Pull Patients from a therapist
+
+#------------------------------------------------------------------#
+# Completed 1/31/2026 
+# [x] Deleting a Therapist from a Patient
+
+@app.delete("/therapists/{therapist_id}/patients/{patient_id}")
+async def remove_patient_from_therapist(therapist_id: int, patient_id: int):
+
+    # checking first if they exist
+    if therapist_id not in therapists_db:
+        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
+    
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail=f"Patient with the id: {patient_id} doesn't exist")
+    
+    # basic info
+    therapist_info = therapists_db[therapist_id] #Only giving us a specific amount of info not all of it
+    patient_info = patients_db[patient_id]
+
+    # check if the therapist has 0 patients
+    if not therapist_info.patients: #checking the size of the list
+        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't have any patients")
+    
+    therapist_info.patients = [p for p in therapist_info.patients if p["id"] != patient_id]
+    patient_info.therapists = [t for t in patient_info.therapists if t["id"] != therapist_id]
+
+    return therapist_info
+
+#------------------------------------------------------------------#
+# What needs to be done:
+# [x] Deleting a Patient from a Therapist
+
+
+@app.delete("/patients/{patient_id}/therapists/{therapist_id}")
+async def remove_therapist_from_patient(therapist_id: int, patient_id: int):
+
+    # checking first if they exist
+    if therapist_id not in therapists_db:
+        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
+    
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail=f"Patient with the id: {patient_id} doesn't exist")
+    
+    # basic info
+    therapist_info = therapists_db[therapist_id] #Only giving us a specific amount of info not all of it
+    patient_info = patients_db[patient_id]
+
+    # check if the patient has 0 therapists
+    if not patient_info.therapists: #checking the size of the list
+        raise HTTPException(status_code=404, detail=f"Patient with the id: {patient_id} doesn't have any therapists")
+    
+    therapist_info.patients = [p for p in therapist_info.patients if p["id"] != patient_id]
+    patient_info.therapists = [t for t in patient_info.therapists if t["id"] != therapist_id]
+
+    return patient_info
+
+    
