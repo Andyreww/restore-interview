@@ -1,0 +1,12 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual env
+.venv/
+
+# VS Code settings (optional to share)
+.vscode/
+
+# OS files
+.DS_Store

@@ -1,14 +1,33 @@
-from fastapi import FastAPI, HTTPException, Depends #FastAPI
-from pydantic import BaseModel #Allow us to create classes for Therapist/Patients
+"""
+Imports: Fast API, HTTPException, Depends
 
-#------------------------------------------------------------------#
-# Connecting to the database
-# Things for PostgreSQL
-# Added 'ForeignKey' to imports so we can link tables!
+- FastAPI: Allows us to create our Backend API
+- HTTPEXception: This allows us to return errors if we encounter issues
+- Depends: Allows our API queries to talk to the databse
+
+"""
+from fastapi import FastAPI, HTTPException, Depends 
+
+"""
+Imports: Pydantic
+
+- This allow us to create classes that can have their uniqye
+traits base on their goal
+"""
+from pydantic import BaseModel
+
+
+"""
+Imports: create_engine, Column, Integer, String, ForeignKey
+- Creatine Engine: Allows us to talk with the PostgreSQL databse (establishing a connection)
+- Column, Integer, String, ForeginKey: Creating the mapping tools within our database
+"""
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker, declarative_base
 
+#------------------------------------------------------------------------------------------------------#
+# Step 1: Initialize/Create our Database
 db_user: str = 'postgres'
 db_port: int = 5432
 db_host: str = 'localhost'
@@ -17,9 +36,17 @@ db_password: str = '052003'
 uri: str = f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/RESTORE-API'
 
 engine = create_engine(uri)
-session_local = sessionmaker(bind=engine, autoflush=True)
 
-#session
+"""
+Bind: This connects to our database
+autoFlush: This doesn't push changes, instead it waits for me to declare when
+autocommit: Control when things get saved
+"""
+session_local = sessionmaker(autocommit = False, bind=engine, autoflush=True)
+
+BASE = declarative_base()
+
+# Connecting to our database
 def get_db():
     db = session_local() # Open the door
     try:
@@ -27,241 +54,220 @@ def get_db():
     finally:
         db.close() # Close the door
 
-#------------------------------------------------------------------#
-# Models
-BASE = declarative_base()
+#------------------------------------------------------------------------------------------------------#
+#Step 2: Creating schemas within our database
 
-#Creating our model or table
-class TherapistsModel(BASE):
-    __tablename__ = "therapists"
+class Therapist(BASE):
+    __tablename__ = 'therapists'
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
 
-class PatientsModel(BASE):
-    __tablename__ = "patients"
-    id = Column(Integer, primary_key=True, index=True) #db will handle the id's
+class Patients(BASE):
+    __tablename__ = 'patients'
+    id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
     age = Column(Integer)
-    descriptions = Column(String)
-    # This is the "Tag" that links a patient to a therapist!
+
+    # Allows us to have that "relationship" with therapists and patients
     therapist_id = Column(Integer, ForeignKey("therapists.id"), nullable=True)
 
-BASE.metadata.create_all(bind=engine) #Tells the db to build the tables based on my classes
+BASE.metadata.create_all(bind=engine) # This sends our schema to the database
 
-#------------------------------------------------------------------#
-#CRUD mindset
-#When we create data we want to be able to:
-#1. Create
-#2. Read
-#3. Update
-#4. Delete
-#------------------------------------------------------------------#
-
-#Temporary in-memory db -> DELETED (We are using real DB now!)
-
-#------------------------------------------------------------------#
-#Big Idea We want Data Stored in a Database
-#Endpoints of Therapist and Patients
-#------------------------------------------------------------------#
-
-#Step 1: What Are Therapists and Patients? (The Pydantic Schemas)
-class TherapistsSchema(BaseModel):
+#------------------------------------------------------------------------------------------------------#
+#Step 3: Creating Classes for Fast API
+class therapistSchema(BaseModel):
     name: str
-    # patients: list... -> Removed for now, simpler to query directly
 
-class PatientsSchema(BaseModel):
-    name: str
-    # patient_id: int -> Removed, DB handles this
-    descriptions: str | None = None
+
+class patientSchema(BaseModel):
     age: int
-    # therapists: list... -> Removed, we use Foreign Key now
+    name: str
 
-#------------------------------------------------------------------#
+#------------------------------------------------------------------------------------------------------#
+# Step 4: Initilaize Our App
 app = FastAPI()
 
-# Step 2:
-# Simple Creating New Therapist & Patients
+#---------------#
+#Step 5: POST a therapist/patients to the API
+#C: Create <--
+#R
+#U: 
+#D
+
+# Create a Therapist
 @app.post("/therapists/")
-async def create_therapist(therapist: TherapistsSchema, db: Session = Depends(get_db)):
-    #Creating the Db model using the data from the class we have
-    new_therapist = TherapistsModel(name=therapist.name) 
-    db.add(new_therapist)
+async def create_therapist(therapist: therapistSchema, db: Session = Depends(get_db)):
+    new_therapist = Therapist(name=therapist.name)
+    db.add(new_therapist) # Adds it to the database
     db.commit()
     db.refresh(new_therapist)
     return new_therapist
 
+# Create a Patient
 @app.post("/patients/")
-async def create_patient(patient: PatientsSchema, db: Session = Depends(get_db)):
-    # Create the model
-    new_patient = PatientsModel(
-        name=patient.name,
-        age=patient.age,
-        descriptions=patient.descriptions
+async def create_patient(patient: patientSchema, db: Session = Depends(get_db)):
+    new_patient = Patients(
+        name = patient.name,
+        age = patient.age
     )
-    # Save to DB
-    db.add(new_patient) 
+    db.add(new_patient)
     db.commit()
     db.refresh(new_patient)
     return new_patient
 
-#------------------------------------------------------------------#
-#Step 3:
-# Assigning Therapist to Patients
-@app.post("/therapists/{therapist_id}/patients/{patient_id}")
-async def assign_patient(therapist_id: int, patient_id: int, db: Session = Depends(get_db)): 
+#---------------#
+#Step 5.1: Read the therapists/patients that we created
+#C
+#R: Read <--
+#U: 
+#D
 
-    # 1. Find the Therapist (Check if they exist)
-    therapist = db.query(TherapistsModel).filter(TherapistsModel.id == therapist_id).first()
+@app.get("/therapists/{therapist_id}")
+async def get_therapist_info(therapist_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieves information for a specific therapist by their ID.
+    """
+    # Query the database for the therapist with the given ID
+    therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
+
+    # Check if the therapist exists
     if therapist is None:
-        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
-    
-    # 2. Find the Patient
-    patient = db.query(PatientsModel).filter(PatientsModel.id == patient_id).first()
-    if patient is None:
-        raise HTTPException(status_code=404, detail=f"Patient with the id: {patient_id} doesn't exist")
-    
-    # 3. The "Assignment" Logic 
-    # Instead of appending to a list, we just set the Foreign Key ID
-    patient.therapist_id = therapist.id 
-    
-    db.commit() # Save the stamp
-    db.refresh(patient)
+        # Return a 404 error if the therapist is not found
+        raise HTTPException(status_code=404, detail="Therapist not found")
 
-    return {"message": f"Patient {patient.name} is now assigned to Therapist {therapist.name}"}
-
-#------------------------------------------------------------------#
-#Step 4:
-# Getting Info From the Patients
+    # Return the therapist's information
+    return therapist
 
 @app.get("/patients/{patient_id}")
 async def get_patient_info(patient_id: int, db: Session = Depends(get_db)):
-    
-    patient = db.query(PatientsModel).filter(PatientsModel.id == patient_id).first()
+    """
+    Retrieve the information for the patient based on their ID
+    """
+    patient = db.query(Patients).filter(Patients.id == patient_id).first()
 
-    if patient is None:
-        raise HTTPException(status_code=404, detail=f"Patient with the id: {patient_id} doesn't exist")
-    
-    return patient
-
-# Getting Info From the Therapists
-@app.get("/therapists/{therapist_id}")
-async def get_therapist_info(therapist_id: int, db: Session = Depends(get_db)):
-    
-    #Select * From therapist where id = therapist_id
-    therapist = db.query(TherapistsModel).filter(TherapistsModel.id == therapist_id).first()
-
-    # check if it even exists
-    if therapist is None:
-        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
-    
-    return therapist
-
-@app.get("/patients/")
-async def get_all_patients(db: Session = Depends(get_db)):
-    # Select * from patients
-    patients = db.query(PatientsModel).all()
-    if not patients:
-         # Optional: You can return empty list instead of 404 if you prefer
-         raise HTTPException(status_code=404, detail=f"Currently No Patients Exist")
-    return patients
-
-@app.get("/therapists/")
-async def get_all_therapists(db: Session = Depends(get_db)):
-    # Select * from therapists
-    therapists = db.query(TherapistsModel).all()
-    if not therapists:
-        raise HTTPException(status_code=404, detail=f"Currently No Therapists Exist")
-    return therapists
-
-#------------------------------------------------------------------#
-#Step 5: Pull all of the Patients from a therapist
-@app.get("/therapists/{therapist_id}/patients")
-async def get_therapist_patients(therapist_id: int, db: Session = Depends(get_db)):
-
-    # making sure that the therapist exists
-    therapist = db.query(TherapistsModel).filter(TherapistsModel.id == therapist_id).first()
-    if therapist is None:
-        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
-
-    # SQL Logic: SELECT * FROM patients WHERE therapist_id = {therapist_id}
-    patients = db.query(PatientsModel).filter(PatientsModel.therapist_id == therapist_id).all()
-
-    return patients
-
-#------------------------------------------------------------------#
-# Recap of where were at right now
-# [x] We can create therapists
-# [x] We can create patients
-# [x] We can retrieve information from the specific therapist/patient based on id
-# [x] Pull Patients from a therapist
-
-#------------------------------------------------------------------#
-# Completed 1/31/2026 
-# [x] Deleting a Therapist from a Patient (Unassigning)
-
-@app.delete("/therapists/{therapist_id}/patients/{patient_id}")
-async def remove_patient_from_therapist(therapist_id: int, patient_id: int, db: Session = Depends(get_db)):
-
-    # Find the patient
-    patient = db.query(PatientsModel).filter(PatientsModel.id == patient_id).first()
-    
+    # check if the patient even exists
     if patient is None:
         raise HTTPException(status_code=404, detail="Patient not found")
-        
-    # Check if they are actually assigned to this therapist
-    if patient.therapist_id != therapist_id:
-         raise HTTPException(status_code=404, detail="Patient is not assigned to this therapist")
 
-    # The "Un-Assign" Logic
-    patient.therapist_id = None # Remove the stamp
+    db.refresh(patient)
+    return patient
+
+@app.get("/therapists/{therapist_id}/patients")
+async def get_patients_assigned_to_therapist(therapist_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieves all of the therapists for a given patient
+    """
+    therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
+    patients = db.query(Patients).filter(Patients.therapist_id == therapist_id).all()
+
+    # check if the patient even exists
+    if therapist is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
     
+    return {"patients": [{"id": p.id, "name": p.name, "age": p.age} for p in patients]}
+
+
+#Step 5.2: Assing Therapist <-> Patients
+#C
+#R
+#U: Update <--
+#D
+
+
+@app.post("/therapists/{therapist_id}/patients/{patient_id}")
+async def assign_patient_to_therapist(therapist_id: int, patient_id: int, db: Session = Depends(get_db)):
+    """
+    Assingning a Therapist to a Patient
+    """
+    therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
+    patient = db.query(Patients).filter(Patients.id == patient_id).first()
+    if(therapist is None or patient is None):
+        raise HTTPException(status_code=404, detail="Insufficent Information")
+    
+    patient.therapist_id = therapist_id
+
     db.commit()
-    
-    return {"message": "Patient unassigned successfully"}
+    db.refresh(patient)
+    return {"message": f"Patient {patient.name} is now assigned to Therapist {therapist.name}"}
 
-#------------------------------------------------------------------#
-# What needs to be done:
-# [x] Deleting a Patient from a Therapist (Same logic as above essentially)
+@app.patch("/therapist/{therapist_id}/{name}")
+async def update_therapist_name(therapist_id: int, name: str, db: Session = Depends(get_db)):
+    """
+    Update the therapists name
+    """
+    therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
 
-@app.delete("/patients/{patient_id}/therapists/{therapist_id}")
-async def remove_therapist_from_patient(therapist_id: int, patient_id: int, db: Session = Depends(get_db)):
-    # This is effectively the same as the function above, just named differently!
-    # Reuse the logic
-    return await remove_patient_from_therapist(therapist_id, patient_id, db)
+    if therapist is None:
+        raise HTTPException(status_code=404, detail="Therapist not found")
 
-#------------------------------------------------------------------#
-#Step 6: Updating information
-
-@app.patch("/therapists/{therapist_id}/name/{name}")
-async def change_therapist_name(therapist_id: int, name:str, db: Session = Depends(get_db)):
-
-    therapist_info = db.query(TherapistsModel).filter(TherapistsModel.id == therapist_id).first()
-
-    #check if they exist
-    if therapist_info is None:
-        raise HTTPException(status_code=404, detail=f"Therapist with the id: {therapist_id} doesn't exist")
-    
-    #change the name value
-    therapist_info.name = name
-
-    #stage changes
+    therapist.name = name
     db.commit()
-    db.refresh(therapist_info)
-    return therapist_info
+    db.refresh(therapist)
+    return therapist
 
-@app.patch("/patients/{patient_id}/name/{name}")
-async def change_patient_name(patient_id: int, name:str, db: Session = Depends(get_db)):
+@app.patch("/patients/{patient_id}/{name}")
+async def update_patient_name(patient_id: int, name: str, db: Session = Depends(get_db)):
+    """
+    Updating the patients name
+    """
+    patient = db.query(Patients).filter(Patients.id == patient_id).first()
 
-    patient_info = db.query(PatientsModel).filter(PatientsModel.id == patient_id).first()
-
-    #check if they exist
-    if patient_info is None:
-        raise HTTPException(status_code=404, detail=f"Patient with the id: {patient_id} doesn't exist")
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
     
-    #change the name
-    patient_info.name = name
-
-    #stage change
+    patient.name = name
     db.commit()
-    db.refresh(patient_info)
-    return patient_info
+    db.refresh(patient)
+    return patient
+
+#Step 5.3: Delete Patients/Therapists
+#C
+#R
+#U 
+#D: Delete <--
+
+@app.delete("/patients/{patient_id}/{therapist_id}")
+async def delete_therapist_from_patient(patient_id: int, db: Session = Depends(get_db)):
+    """
+    Removing Therapists from Patients
+    """
+
+    patient = db.query(Patients).filter(Patients.id == patient_id).first()
+
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient doesnt exists")
+    
+    patient.therapist_id = None
+    db.commit()
+    db.refresh(patient)
+    return patient
+
+@app.delete("/patients/{patient_id}")
+async def delete_patient(patient_id: int, db: Session = Depends(get_db)):
+    """
+    Remove Patients database
+    """
+    patient = db.query(Patients).filter(Patients.id == patient_id).first()
+    
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient doesn't exist")
+    
+    db.delete(patient)
+    db.commit()
+    db.refresh(patient)
+    return {"message": f"{patient.id},{patient.name} has been removed"}
+
+@app.delete("/therapists/{therapist_id}")
+async def delete_therapist(therapist_id: int, db: Session = Depends(get_db)):
+    """
+    Remove Therapist from database
+    """
+    therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
+
+    if therapist is None:
+        raise HTTPException(status_code=404, detail="Therapist doesn't exist")
+    
+    db.delete(therapist)
+    db.commit()
+    db.refresh(therapist)
+    return {"message": f"{therapist.id}, {therapist.name} has been removed"}
