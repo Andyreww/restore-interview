@@ -1,6 +1,7 @@
 # Python bytecode
 __pycache__/
 *.py[cod]
+*[.pyc](__pycache__/main.cpython-313.pyc)
 
 # Virtual env
 .venv/

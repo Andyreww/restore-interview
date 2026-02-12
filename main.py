@@ -28,6 +28,11 @@ from sqlalchemy.orm import Session, sessionmaker, declarative_base
 
 #------------------------------------------------------------------------------------------------------#
 # Step 1: Initialize/Create our Database
+
+# **IMPORTANT DISCLAIMER**
+# For this interview this data is public
+# For actual production this would be grabbed from an .env file
+# Once the interview is over these credentials will NOT WORK
 db_user: str = 'postgres'
 db_port: int = 5432
 db_host: str = 'localhost'
@@ -62,7 +67,7 @@ class Therapist(BASE):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
 
-class Patients(BASE):
+class Patient(BASE):
     __tablename__ = 'patients'
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
@@ -91,7 +96,7 @@ app = FastAPI()
 #Step 5: POST a therapist/patients to the API
 #C: Create <--
 #R
-#U: 
+#U 
 #D
 
 # Create a Therapist
@@ -101,19 +106,27 @@ async def create_therapist(therapist: therapistSchema, db: Session = Depends(get
     db.add(new_therapist) # Adds it to the database
     db.commit()
     db.refresh(new_therapist)
-    return new_therapist
+    return {
+        "id": new_therapist.id, 
+        "name": new_therapist.name
+    }
 
 # Create a Patient
 @app.post("/patients/")
 async def create_patient(patient: patientSchema, db: Session = Depends(get_db)):
-    new_patient = Patients(
+    new_patient = Patient(
         name = patient.name,
         age = patient.age
     )
     db.add(new_patient)
     db.commit()
     db.refresh(new_patient)
-    return new_patient
+    return {
+        "id": new_patient.id, 
+        "name": new_patient.name, 
+        "age": new_patient.age,
+        "therapist_id": new_patient.therapist_id
+    }
 
 #---------------#
 #Step 5.1: Read the therapists/patients that we created
@@ -136,21 +149,28 @@ async def get_therapist_info(therapist_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Therapist not found")
 
     # Return the therapist's information
-    return therapist
+    return {
+        "id": therapist.id,
+        "name": therapist.name
+    }
 
 @app.get("/patients/{patient_id}")
 async def get_patient_info(patient_id: int, db: Session = Depends(get_db)):
     """
     Retrieve the information for the patient based on their ID
     """
-    patient = db.query(Patients).filter(Patients.id == patient_id).first()
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
 
     # check if the patient even exists
     if patient is None:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    db.refresh(patient)
-    return patient
+    return {
+        "id": patient.id,
+        "name": patient.name,
+        "age": patient.age,
+        "therapist": patient.therapist_id
+    }
 
 @app.get("/therapists/{therapist_id}/patients")
 async def get_patients_assigned_to_therapist(therapist_id: int, db: Session = Depends(get_db)):
@@ -158,15 +178,33 @@ async def get_patients_assigned_to_therapist(therapist_id: int, db: Session = De
     Retrieves all of the therapists for a given patient
     """
     therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
-    patients = db.query(Patients).filter(Patients.therapist_id == therapist_id).all()
 
     # check if the patient even exists
     if therapist is None:
         raise HTTPException(status_code=404, detail="Patient not found")
     
+    patients = db.query(Patient).filter(Patient.therapist_id == therapist_id).all()
+    
     return {"patients": [{"id": p.id, "name": p.name, "age": p.age} for p in patients]}
 
+@app.get("/patients/")
+async def get_patients(age: int = None, therapist_id: int = None, db: Session = Depends(get_db)):
+    """
+    Retrieves patient info based on whats inputted into the API request
+    """
+    query = db.query(Patient)
 
+    if age:
+        query = query.filter(Patient.age == age)
+    if therapist_id:
+        query = query.filter(Patient.therapist_id == therapist_id)
+
+    patients = query.all()
+
+    return [{"id": p.id, "name": p.name, "age": p.age, "therapist_id": p.therapist_id} for p in patients]
+    
+
+#---------------#
 #Step 5.2: Assing Therapist <-> Patients
 #C
 #R
@@ -180,9 +218,9 @@ async def assign_patient_to_therapist(therapist_id: int, patient_id: int, db: Se
     Assingning a Therapist to a Patient
     """
     therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
-    patient = db.query(Patients).filter(Patients.id == patient_id).first()
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if(therapist is None or patient is None):
-        raise HTTPException(status_code=404, detail="Insufficent Information")
+        raise HTTPException(status_code=404, detail="Either Therapist or Patient doesn't exist")
     
     patient.therapist_id = therapist_id
 
@@ -210,7 +248,7 @@ async def update_patient_name(patient_id: int, name: str, db: Session = Depends(
     """
     Updating the patients name
     """
-    patient = db.query(Patients).filter(Patients.id == patient_id).first()
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
 
     if patient is None:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -220,6 +258,7 @@ async def update_patient_name(patient_id: int, name: str, db: Session = Depends(
     db.refresh(patient)
     return patient
 
+#---------------#
 #Step 5.3: Delete Patients/Therapists
 #C
 #R
@@ -232,7 +271,7 @@ async def delete_therapist_from_patient(patient_id: int, db: Session = Depends(g
     Removing Therapists from Patients
     """
 
-    patient = db.query(Patients).filter(Patients.id == patient_id).first()
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
 
     if patient is None:
         raise HTTPException(status_code=404, detail="Patient doesnt exists")
@@ -247,14 +286,13 @@ async def delete_patient(patient_id: int, db: Session = Depends(get_db)):
     """
     Remove Patients database
     """
-    patient = db.query(Patients).filter(Patients.id == patient_id).first()
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
     
     if patient is None:
         raise HTTPException(status_code=404, detail="Patient doesn't exist")
     
     db.delete(patient)
     db.commit()
-    db.refresh(patient)
     return {"message": f"{patient.id},{patient.name} has been removed"}
 
 @app.delete("/therapists/{therapist_id}")
@@ -263,11 +301,8 @@ async def delete_therapist(therapist_id: int, db: Session = Depends(get_db)):
     Remove Therapist from database
     """
     therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
-
     if therapist is None:
         raise HTTPException(status_code=404, detail="Therapist doesn't exist")
-    
     db.delete(therapist)
     db.commit()
-    db.refresh(therapist)
     return {"message": f"{therapist.id}, {therapist.name} has been removed"}
